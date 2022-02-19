@@ -1,47 +1,41 @@
-require('dotenv').config()
-const { Sequelize, Model, DataTypes } = require('sequelize')
 const express = require('express')
 const app = express()
 
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false
-    }
-  },
-});
+const { PORT } = require('./util/config')
+const { connectToDatabase } = require('./util/db')
 
-class Note extends Model {}
-Note.init({
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  content: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
-  important: {
-    type: DataTypes.BOOLEAN
-  },
-  date: {
-    type: DataTypes.DATE
+const blogsRouter = require('./controllers/blogs')
+const usersRouter = require('./controllers/users')
+const loginRouter = require('./controllers/login')
+const authorsRouter = require('./controllers/authors')
+
+app.use(express.json())
+
+app.use('/api/blogs', blogsRouter)
+app.use('/api/users', usersRouter)
+app.use('/api/authors', authorsRouter)
+app.use('/api/login', loginRouter)
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'SequelizeValidationError') {
+    return response.status(400).send({ error: error.message })
   }
-}, {
-  sequelize,
-  underscored: true,
-  timestamps: false,
-  modelName: 'note'
-})
+  if (error.name === 'SequelizeDatabaseError') {
+    return response.status(400).send({ error: 'invalid input' })
+  }
 
-app.get('/api/notes', async (req, res) => {
-  const notes = await Note.findAll()
-  res.json(notes)
-})
+  next(error)
+}
 
-const PORT = process.env.PORT || 3001
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+app.use(errorHandler)
+
+const start = async () => {
+  await connectToDatabase()
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`)
+  })
+}
+
+start()
