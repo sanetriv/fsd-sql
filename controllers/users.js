@@ -1,13 +1,22 @@
 const router = require('express').Router()
 
-const { User, Blog } = require('../models')
+const { Op } = require('sequelize')
+const { User, Blog, Readinglist } = require('../models')
 
 router.get('/', async (req, res) => {
-  const users = await User.findAll({
+  /*const users = await User.findAll({
     include: {
       model: Blog,
       attribute: { exclude: ['userId'] }
     }
+  })
+  res.json(users)*/
+  const users = await User.findAll({ 
+    include: [
+      { 
+        model: Readinglist, 
+      }
+    ]
   })
   res.json(users)
 })
@@ -29,6 +38,40 @@ router.put('/:username', async (req, res, next) => {
     res.json(user)
   } catch(error) {
     next(error)
+  }
+})
+
+router.get('/:id', async (req, res) => {
+  const where = {}
+
+  if ( req.query.read ) {
+    where.read = req.query.read
+  }
+  
+  const user = await User.findByPk(req.params.id, {
+    attributes: { exclude: ['id','createdAt', 'updatedAt'] },
+    include: [
+      {
+        model: Blog,
+        as: 'readings',
+        attributes: {
+          exclude: [
+            'createdAt', 'updatedAt', 'userId'
+          ]
+        },
+        through: {
+          attributes: {
+            exclude: ['userId', 'blogId']
+          },
+          where
+        }
+      }
+    ]
+  })
+  if (user) {
+    res.json(user)
+  } else {
+    res.status(404).end()
   }
 })
 

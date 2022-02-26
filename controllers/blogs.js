@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken')
 const { Op } = require('sequelize')
 
 const { Blog, User } = require('../models')
+const Session = require('../models/session')
 const { SECRET } = require('../util/config')
 
 const blogFinder = async (req, res, next) => {
@@ -62,8 +63,16 @@ router.post('/', tokenExtractor, async (req, res, next) => {
   console.log(req.body)
   try {
     const user = await User.findByPk(req.decodedToken.id)
-    const blog = await Blog.create({...req.body, userId: user.id})
-    return res.json(blog)
+    if(user.disabled){
+      return res.status(401).json({error: 'user is disabled'})
+    }
+    const ses = await Session.findOne({where:{userId: user.id}})
+    if(ses){
+      const blog = await Blog.create({...req.body, userId: user.id})
+      return res.json(blog)
+    }else{
+      res.status(401).json({error:'token expired'})
+    }
   } catch(error) {
     next(error)
   }
@@ -72,26 +81,43 @@ router.post('/', tokenExtractor, async (req, res, next) => {
 router.delete('/:id', tokenExtractor, async (req, res, next) => {
   try {
     const user = await User.findByPk(req.decodedToken.id)
-    const blog = await Blog.findOne({ where: { userId: user.id, id: req.params.id } })
-    if (blog){
-      await blog.destroy()
-      res.status(204).json(blog)
-    } else {
-      res.status(400).send({ message: 'blog not found' })
+    if(user.disabled){
+      return res.status(401).json({error: 'user is disabled'})
+    }
+    const ses = await Session.findOne({where:{userId: user.id}})
+    if(ses){
+      const blog = await Blog.findOne({ where: { userId: user.id, id: req.params.id } })
+      if (blog){
+        await blog.destroy()
+        res.status(204).json(blog)
+      } else {
+        res.status(400).send({ message: 'blog not found' })
+      }
+    }else{
+      res.status(401).json({error:'token expired'})
     }
   } catch(error) {
     next(error)
   }
 })
 
-router.put('/:id', blogFinder, async (req, res, next) => {
+router.put('/:id',tokenExtractor, blogFinder, async (req, res, next) => {
   try{
-    if (req.blog) {
-      req.blog.likes = req.body.likes
-      await req.blog.save()
-      res.json(req.blog)
-    } else {
-      res.status(404).end()
+    const user = await User.findByPk(req.decodedToken.id)
+    if(user.disabled){
+      return res.status(401).json({error: 'user is disabled'})
+    }
+    const ses = await Session.findOne({where:{userId: user.id}})
+    if(ses){
+      if (req.blog) {
+        req.blog.likes = req.body.likes
+        await req.blog.save()
+        res.json(req.blog)
+      } else {
+        res.status(404).end()
+      }
+    }else{
+      res.status(401).json({error:'token expired'})
     }
   } catch (error) {
     next(error)
